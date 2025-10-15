@@ -1,0 +1,7 @@
+playground/
+playgorund/
+public/
+__pycache__/
+logs
+.env
+instructions.md

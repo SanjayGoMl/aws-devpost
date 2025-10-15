@@ -34,10 +34,10 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 # Add test upload page route
-@app.get("/test")
-async def test_upload_page():
-    """Serve the test upload page"""
-    return FileResponse("test_upload.html")
+# @app.get("/test")
+# async def test_upload_page():
+#     """Serve the test upload page"""
+#     return FileResponse("test_upload.html")
 
 # Global exception handlers
 @app.exception_handler(ServiceException)
@@ -78,11 +78,24 @@ async def root():
         "service": "AWS Image and Excel Analysis Service",
         "version": "1.0.0",
         "status": "running",
+        "description": "Unified API for analyzing images and Excel files using AWS Bedrock",
         "endpoints": {
             "docs": "/docs",
+            "redoc": "/redoc",
             "health": "/api/health",
-            "upload": "/api/analyze/upload"
-        }
+            "upload": "/api/analyze/upload",
+            "users_count": "/api/users/count",
+            "user_projects": "/api/projects/{user_id}",
+            "project_details": "/api/projects/{user_id}/{project_id}"
+        },
+        "features": [
+            "4-Agent Architecture for file processing",
+            "AWS Bedrock Claude-3 AI analysis",
+            "S3 secure file storage",
+            "DynamoDB project tracking",
+            "Multi-file upload support",
+            "Project search and filtering"
+        ]
     }
 
 # Startup event

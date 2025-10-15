@@ -5,3 +5,15 @@ __pycache__/
 logs
 .env
 instructions.md
+test_project_apis.py 
+test_curl_commands.sh
+ENHANCED_UPLOAD_SUMMARY.md
+IMPLEMENTATION_SUMMARY.md
+API_SUMMARY.md
+test_enhanced_upload.py
+test_service.py
+test_simple_validation.py
+test_simplified_apis.py
+test_upload.html
+test_array_descriptions.py
+ARRAY_DESCRIPTIONS_SUMMARY.md

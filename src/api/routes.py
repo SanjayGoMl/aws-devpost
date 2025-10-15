@@ -4,15 +4,29 @@ import logging
 from ..services.aws_service import AWSService
 from .models import UserProjectsResponse, ProjectDetailsResponse, UsersCountResponse, ErrorResponse
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/api_routes.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging with fallback for missing logs directory
+def setup_logging():
+    """Setup logging with graceful fallback if logs directory doesn't exist"""
+    import os
+    handlers = []
+    
+    # Try to add file handler, fallback to console-only if logs dir doesn't exist
+    try:
+        os.makedirs('logs', exist_ok=True)
+        handlers.append(logging.FileHandler('logs/api_routes.log'))
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Could not create log file, using console only: {e}")
+    
+    # Always add console handler
+    handlers.append(logging.StreamHandler())
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers
+    )
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()

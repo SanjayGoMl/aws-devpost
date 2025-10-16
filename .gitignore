@@ -17,3 +17,6 @@ test_simplified_apis.py
 test_upload.html
 test_array_descriptions.py
 ARRAY_DESCRIPTIONS_SUMMARY.md
+aws-oct.pem 
+PRESIGNED_URLS_SUMMARY.md 
+test_presigned_urls.py

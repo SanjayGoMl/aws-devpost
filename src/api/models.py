@@ -6,12 +6,14 @@ class ImageSummary(BaseModel):
     """Summary information for an image file"""
     filename: str = Field(..., description="Original filename of the image")
     s3_url: str = Field(..., description="S3 storage URL")
+    presigned_url: Optional[str] = Field(None, description="Presigned URL for frontend access")
     has_analysis: bool = Field(..., description="Whether AI analysis was performed")
 
 class ExcelSummary(BaseModel):
     """Summary information for an Excel file"""
     filename: str = Field(..., description="Original filename of the Excel file")
     s3_url: str = Field(..., description="S3 storage URL")
+    presigned_url: Optional[str] = Field(None, description="Presigned URL for frontend access")
     row_count: int = Field(..., description="Number of rows in the Excel file")
     column_count: int = Field(..., description="Number of columns in the Excel file")
     columns: List[str] = Field(..., description="List of column names")

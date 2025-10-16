@@ -106,9 +106,13 @@ class AWSService:
                             image.file, folder_name, "images", filename
                         )
                         
+                        # Generate presigned URL for frontend access
+                        presigned_url = self.generate_presigned_url(s3_url, expiration=7200)  # 2 hours
+                        
                         result["images"].append({
                             "filename": filename,
-                            "s3_url": s3_url
+                            "s3_url": s3_url,  # Keep original S3 URL for internal use
+                            "presigned_url": presigned_url  # Add presigned URL for frontend
                         })
                         result["image_contents"][filename] = {
                             "content": image_content,
@@ -140,9 +144,13 @@ class AWSService:
                             excel.file, folder_name, "excel", filename
                         )
                         
+                        # Generate presigned URL for frontend access
+                        presigned_url = self.generate_presigned_url(s3_url, expiration=7200)  # 2 hours
+                        
                         result["excel"] = {
                             "filename": filename,
-                            "s3_url": s3_url
+                            "s3_url": s3_url,  # Keep original S3 URL for internal use
+                            "presigned_url": presigned_url  # Add presigned URL for frontend
                         }
                         result["excel_content"] = excel_content  # Store content for analysis
                         logger.info(f"Storage Agent: Uploaded Excel file {filename}")
@@ -170,9 +178,13 @@ class AWSService:
                             document.file, folder_name, "documents", filename
                         )
                         
+                        # Generate presigned URL for frontend access
+                        presigned_url = self.generate_presigned_url(s3_url, expiration=7200)  # 2 hours
+                        
                         result["documents"].append({
                             "filename": filename,
-                            "s3_url": s3_url
+                            "s3_url": s3_url,  # Keep original S3 URL for internal use
+                            "presigned_url": presigned_url  # Add presigned URL for frontend
                         })
                         result["document_contents"][filename] = {
                             "content": document_content,
@@ -209,6 +221,50 @@ class AWSService:
                 detail="Internal server error during file upload"
             )
 
+    def generate_presigned_url(self, s3_url: str, expiration: int = 3600) -> str:
+        """
+        Generate a presigned URL for an S3 object
+        
+        Args:
+            s3_url: S3 URL in format s3://bucket/key
+            expiration: URL expiration time in seconds (default: 1 hour)
+            
+        Returns:
+            Presigned URL string
+        """
+        try:
+            # Parse S3 URL to extract bucket and key
+            if not s3_url.startswith('s3://'):
+                logger.warning(f"Invalid S3 URL format: {s3_url}")
+                return s3_url
+                
+            # Remove s3:// prefix and split bucket/key
+            s3_path = s3_url[5:]  # Remove 's3://'
+            parts = s3_path.split('/', 1)  # Split into bucket and key
+            
+            if len(parts) != 2:
+                logger.warning(f"Could not parse S3 URL: {s3_url}")
+                return s3_url
+                
+            bucket_name, object_key = parts
+            
+            # Generate presigned URL
+            presigned_url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket_name, 'Key': object_key},
+                ExpiresIn=expiration
+            )
+            
+            logger.info(f"Generated presigned URL for {object_key} (expires in {expiration}s)")
+            return presigned_url
+            
+        except ClientError as e:
+            logger.error(f"Error generating presigned URL for {s3_url}: {str(e)}")
+            return s3_url  # Return original URL as fallback
+        except Exception as e:
+            logger.error(f"Unexpected error generating presigned URL: {str(e)}")
+            return s3_url  # Return original URL as fallback
+
     # AGENT 2: Image Analysis Agent
     async def image_analysis_agent(self, storage_result: Dict[str, Any], 
                                  context: str = "", image_descriptions: List[str] = None) -> Dict[str, Any]:
@@ -244,16 +300,25 @@ class AWSService:
                         prompt_parts.append(f"Context: {context}")
                     if specific_description:
                         prompt_parts.append(f"Image Description: {specific_description}")
-                    prompt_parts.append("Please analyze this image and provide detailed insights.")
+                    
+                    # Updated prompt for concise analysis
+                    prompt_parts.append("""Analyze this image and provide a concise summary in exactly 50 words or less. Focus only on:
+1. Main subject/content
+2. Key visual elements
+3. Most important information
+4. Primary purpose/context
+
+Be direct and avoid unnecessary details or descriptions of colors, positioning, or layout unless critically important.""")
                     
                     prompt = "\n".join(prompt_parts)
                     analysis_result = await self._analyze_with_bedrock_content(
-                        prompt, image_data["content"], image_data["content_type"]
+                        prompt, image_data["content"], image_data["content_type"], max_tokens=150
                     )
                     
                     image_analysis.append({
                         "filename": storage_info["filename"],
                         "s3_url": storage_info["s3_url"],
+                        "presigned_url": storage_info.get("presigned_url", storage_info["s3_url"]),  # Include presigned URL
                         "context": context,
                         "image_description": specific_description,
                         "analysis_result": analysis_result,
@@ -330,6 +395,7 @@ Please analyze this Excel data and provide insights including:
             
             excel_analysis = {
                 "s3_url": storage_result["excel"]["s3_url"],
+                "presigned_url": storage_result["excel"].get("presigned_url", storage_result["excel"]["s3_url"]),  # Include presigned URL
                 "context": context,
                 "analysis_result": analysis_result,
                 "row_count": len(df),
@@ -392,6 +458,7 @@ Please analyze this text document and provide insights including:
                     document_analysis.append({
                         "filename": storage_info["filename"],
                         "s3_url": storage_info["s3_url"],
+                        "presigned_url": storage_info.get("presigned_url", storage_info["s3_url"]),  # Include presigned URL
                         "context": context,
                         "document_type": "PDF" if filename.lower().endswith('.pdf') else "Text",
                         "analysis_result": analysis_result
@@ -553,6 +620,26 @@ Please analyze this text document and provide insights including:
             
             item = response['Item']
             
+            # Refresh presigned URLs for all stored objects (they expire)
+            refreshed_images = []
+            for image in item.get('images', []):
+                refreshed_image = image.copy()
+                if 's3_url' in refreshed_image:
+                    refreshed_image['presigned_url'] = self.generate_presigned_url(refreshed_image['s3_url'])
+                refreshed_images.append(refreshed_image)
+            
+            refreshed_excel = item.get('excel', {})
+            if refreshed_excel and 's3_url' in refreshed_excel:
+                refreshed_excel = refreshed_excel.copy()
+                refreshed_excel['presigned_url'] = self.generate_presigned_url(refreshed_excel['s3_url'])
+            
+            refreshed_documents = []
+            for document in item.get('documents', []):
+                refreshed_document = document.copy()
+                if 's3_url' in refreshed_document:
+                    refreshed_document['presigned_url'] = self.generate_presigned_url(refreshed_document['s3_url'])
+                refreshed_documents.append(refreshed_document)
+            
             # Format detailed project information based on actual DynamoDB structure
             project_details = {
                 "user_id": user_id,
@@ -561,17 +648,15 @@ Please analyze this text document and provide insights including:
                 "title": item.get('title', project_id),  # Use project_id as title if no title
                 "created_at": item.get('created_at', ''),
                 "context": item.get('context', ''),
-                "images": item.get('images', []),  # Full images array
-                "excel": item.get('excel', {}),    # Full excel object
-                "documents": item.get('documents', []),  # Full documents array
+                "images": refreshed_images,  # Images with fresh presigned URLs
+                "excel": refreshed_excel,    # Excel with fresh presigned URL
+                "documents": refreshed_documents,  # Documents with fresh presigned URLs
                 "metadata": {
-                    "image_count": len(item.get('images', [])) if item.get('images') else 0,
-                    "document_count": len(item.get('documents', [])) if item.get('documents') else 0,
-                    "has_excel": bool(item.get('excel')),
-                    "has_documents": bool(item.get('documents')),
-                    "total_files": (len(item.get('images', [])) if item.get('images') else 0) + 
-                                  (1 if item.get('excel') else 0) + 
-                                  (len(item.get('documents', [])) if item.get('documents') else 0)
+                    "image_count": len(refreshed_images),
+                    "document_count": len(refreshed_documents),
+                    "has_excel": bool(refreshed_excel),
+                    "has_documents": bool(refreshed_documents),
+                    "total_files": len(refreshed_images) + (1 if refreshed_excel else 0) + len(refreshed_documents)
                 }
             }
             
@@ -725,7 +810,7 @@ Please analyze this text document and provide insights including:
                 detail="Internal server error during analysis"
             )
 
-    async def _analyze_with_bedrock_content(self, content: str, image_bytes: bytes, media_type: str) -> str:
+    async def _analyze_with_bedrock_content(self, content: str, image_bytes: bytes, media_type: str, max_tokens: int = 1000) -> str:
         """Internal method for Bedrock analysis using binary content"""
         try:
             # Encode the image
@@ -755,7 +840,7 @@ Please analyze this text document and provide insights including:
             # Format request for Claude-3
             request_body = json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
+                "max_tokens": max_tokens,
                 "messages": messages
             })
 

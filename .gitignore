@@ -18,5 +18,7 @@ test_upload.html
 test_array_descriptions.py
 ARRAY_DESCRIPTIONS_SUMMARY.md
 aws-oct.pem 
+CONCISE_ANALYSIS_SUMMARY.md 
+test_concise_analysis.py
 PRESIGNED_URLS_SUMMARY.md 
 test_presigned_urls.py

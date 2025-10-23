@@ -5,8 +5,7 @@ from ..services.aws_service import AWSService
 from ..services.auth_service import AuthService
 from .models import UserProjectsResponse, ProjectDetailsResponse, UsersCountResponse, ErrorResponse
 from .auth_models import (
-    RegisterRequest, LoginRequest, PasswordResetRequest, VerifyResetRequest,
-    AuthResponse, PasswordResetResponse, PasswordResetCompleteResponse
+    RegisterRequest, LoginRequest, AuthResponse
 )
 
 # Configure logging with fallback for missing logs directory
@@ -134,94 +133,6 @@ async def login(request: LoginRequest):
     except Exception as e:
         logger.error(f"Unexpected error during login: {str(e)}")
         raise HTTPException(status_code=500, detail="Login failed")
-
-
-@router.post("/auth/request-password-reset", response_model=PasswordResetResponse, tags=["Authentication"])
-async def request_password_reset(request: PasswordResetRequest):
-    """
-    ## Request Password Reset
-    
-    Sends a 6-digit OTP code via email for password reset.
-    The OTP is valid for 10 minutes.
-    
-    ### Request Body:
-    - **email**: User's registered email address
-    
-    ### Response:
-    Returns success message. OTP is sent to the provided email.
-    
-    ### Security Note:
-    For security, the response doesn't reveal whether the email exists.
-    OTP is only sent if the email is registered.
-    
-    ### Next Step:
-    Use the OTP with `/auth/verify-reset` endpoint to complete password reset.
-    
-    ### Example:
-    ```json
-    {
-      "email": "john@example.com"
-    }
-    ```
-    """
-    try:
-        logger.info(f"Password reset requested for email: {request.email}")
-        result = await auth_service.request_password_reset(email=request.email)
-        logger.info(f"Password reset OTP sent to: {request.email}")
-        return result
-    except HTTPException as e:
-        logger.error(f"Password reset request failed: {e.detail}")
-        raise e
-    except Exception as e:
-        logger.error(f"Unexpected error during password reset request: {str(e)}")
-        raise HTTPException(status_code=500, detail="Password reset request failed")
-
-
-@router.post("/auth/verify-reset", response_model=PasswordResetCompleteResponse, tags=["Authentication"])
-async def verify_password_reset(request: VerifyResetRequest):
-    """
-    ## Verify OTP and Reset Password
-    
-    Verifies the OTP code and resets the user's password.
-    
-    ### Request Body:
-    - **email**: User's email address
-    - **otp**: 6-digit OTP code received via email
-    - **new_password**: New password (minimum 6 characters)
-    
-    ### Response:
-    Returns success message upon successful password reset.
-    User can then login with the new password.
-    
-    ### OTP Validation:
-    - OTP must match the code sent via email
-    - OTP must not be expired (10-minute validity)
-    - After successful reset, OTP is cleared from the database
-    
-    ### Example:
-    ```json
-    {
-      "email": "john@example.com",
-      "otp": "123456",
-      "new_password": "NewSecurePass123"
-    }
-    ```
-    """
-    try:
-        logger.info(f"Password reset verification for email: {request.email}")
-        result = await auth_service.verify_otp_and_reset(
-            email=request.email,
-            otp=request.otp,
-            new_password=request.new_password
-        )
-        logger.info(f"Password reset completed for email: {request.email}")
-        return result
-    except HTTPException as e:
-        logger.error(f"Password reset verification failed: {e.detail}")
-        raise e
-    except Exception as e:
-        logger.error(f"Unexpected error during password reset verification: {str(e)}")
-        raise HTTPException(status_code=500, detail="Password reset verification failed")
 
 
 # Token verification dependency (for protected routes)

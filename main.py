@@ -78,24 +78,39 @@ async def root():
         "service": "AWS Image and Excel Analysis Service",
         "version": "1.0.0",
         "status": "running",
-        "description": "Unified API for analyzing images and Excel files using AWS Bedrock",
+        "description": "Unified API for analyzing images and Excel files using AWS Bedrock with user authentication",
         "endpoints": {
             "docs": "/docs",
             "redoc": "/redoc",
             "health": "/api/health",
+            # Authentication endpoints
+            "register": "/api/auth/register",
+            "login": "/api/auth/login",
+            "request_password_reset": "/api/auth/request-password-reset",
+            "verify_password_reset": "/api/auth/verify-reset",
+            # Project endpoints
             "upload": "/api/analyze/upload",
             "users_count": "/api/users/count",
             "user_projects": "/api/projects/{user_id}",
             "project_details": "/api/projects/{user_id}/{project_id}"
         },
         "features": [
+            "User Authentication with Email & Password",
+            "JWT Token-based Sessions",
+            "Email OTP for Password Reset (AWS SES)",
             "4-Agent Architecture for file processing",
             "AWS Bedrock Claude-3 AI analysis",
             "S3 secure file storage",
-            "DynamoDB project tracking",
+            "DynamoDB single-table design",
             "Multi-file upload support",
             "Project search and filtering"
-        ]
+        ],
+        "authentication": {
+            "type": "JWT Bearer Token",
+            "registration_required": True,
+            "password_reset": "Email OTP (10 min validity)",
+            "token_expiration": "24 hours (configurable)"
+        }
     }
 
 # Startup event

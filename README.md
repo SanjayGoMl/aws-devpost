@@ -9,11 +9,13 @@ A unified API service for analyzing images and Excel files using AWS Bedrock (Cl
 
 ## 🚀 Features
 
+- **User Authentication**: Secure registration, login, and password reset with JWT tokens
+- **Email OTP System**: AWS SES integration for password reset verification
 - **Unified API Endpoint**: Single endpoint for both image and Excel analysis
 - **4-Agent Architecture**: Modular processing pipeline with specialized agents
 - **AWS Bedrock Integration**: Claude-3 multimodal AI for image and text analysis
 - **Secure File Storage**: Organized S3 bucket structure with timestamp-based folders
-- **User-Centric Database**: DynamoDB storage with user project tracking
+- **User-Centric Database**: DynamoDB single-table design for users and projects
 - **Stream-Safe Processing**: Resolved file stream management for reliable uploads
 - **Comprehensive Error Handling**: Detailed logging and graceful error recovery
 
@@ -105,8 +107,21 @@ S3_BUCKET_NAME=your-s3-bucket-name
 DYNAMODB_TABLE_NAME=upload_docs
 BEDROCK_INFERENCE_PROFILE_ARN_ID=arn:aws:bedrock:us-east-1:772986066238:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0
 
+# Authentication (NEW)
+JWT_SECRET_KEY=generate-using-command-below-minimum-32-chars
+JWT_EXPIRATION_HOURS=24
+
+# AWS SES for Email OTP (NEW)
+SES_SENDER_EMAIL=noreply@yourdomain.com
+SES_SENDER_NAME=AWS Analysis Service
+
 # Application Settings
 LOG_LEVEL=INFO
+```
+
+**Generate JWT Secret:**
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 ### 6. AWS Setup
@@ -139,6 +154,29 @@ aws dynamodb create-table \
 1. Enable Claude-3 model access in AWS Bedrock console
 2. Ensure your AWS account has bedrock permissions
 3. Update the inference profile ARN in your `.env` file
+
+#### AWS SES Setup (for Email OTP)
+1. **Verify Sender Email:**
+   ```bash
+   # Go to AWS SES Console → Verified Identities
+   # Create Identity → Email Address
+   # Verify the sender email you'll use (e.g., noreply@yourdomain.com)
+   ```
+
+2. **Add IAM Permissions:**
+   ```json
+   {
+     "Effect": "Allow",
+     "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+     "Resource": "*"
+   }
+   ```
+
+3. **Testing (Sandbox Mode):**
+   - Verify recipient emails in SES Console for testing
+   - Or request production access to send to any email
+
+For detailed authentication setup, see: `AUTHENTICATION_SETUP.md`
 
 ### 7. Verify Installation
 
@@ -233,15 +271,22 @@ aws_october/
 │   ├── agents/           # Individual agent modules (if refactored)
 │   ├── api/
 │   │   ├── models.py     # Pydantic models
-│   │   └── routes.py     # API endpoints
+│   │   ├── auth_models.py # Authentication models (NEW)
+│   │   └── routes.py     # API endpoints (includes auth)
 │   ├── services/
-│   │   └── aws_service.py # Main 4-agent implementation
+│   │   ├── aws_service.py # Main 4-agent implementation
+│   │   └── auth_service.py # Authentication service (NEW)
 │   └── utils/
 │       ├── exceptions.py # Custom exceptions
 │       └── logger.py     # Logging utilities
 ├── logs/                 # Application logs
 ├── public/               # Static assets
 ├── playground/           # Development/testing scripts
+├── test_auth_apis.py    # Authentication test suite (NEW)
+├── AUTHENTICATION_DOCUMENTATION.md # Full auth docs (NEW)
+├── AUTHENTICATION_SETUP.md         # Auth setup guide (NEW)
+├── AUTH_QUICK_REFERENCE.md         # Quick reference (NEW)
+├── IMPLEMENTATION_SUMMARY.md       # Implementation details (NEW)
 ├── main.py              # Application entry point
 ├── requirements.txt     # Python dependencies
 ├── pyproject.toml       # UV/Python project configuration
@@ -289,6 +334,74 @@ uv add package_name --upgrade
 ```
 
 ## 📊 API Documentation
+
+### Authentication Endpoints (NEW)
+
+#### Register User
+**Method:** POST  
+**Endpoint:** `/api/auth/register`  
+**Content-Type:** application/json
+
+```bash
+curl -X POST "http://localhost:8000/api/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123",
+    "full_name": "John Doe"
+  }'
+```
+
+**Response:**
+```json
+{
+  "message": "Registration successful",
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "user_id": "3f4a8b9c2d1e",
+    "email": "user@example.com",
+    "full_name": "John Doe",
+    "initials": "JD"
+  }
+}
+```
+
+#### Login User
+**Method:** POST  
+**Endpoint:** `/api/auth/login`
+
+```bash
+curl -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123"
+  }'
+```
+
+#### Request Password Reset
+**Method:** POST  
+**Endpoint:** `/api/auth/request-password-reset`
+
+```bash
+curl -X POST "http://localhost:8000/api/auth/request-password-reset" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+```
+
+#### Reset Password with OTP
+**Method:** POST  
+**Endpoint:** `/api/auth/verify-reset`
+
+```bash
+curl -X POST "http://localhost:8000/api/auth/verify-reset" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "otp": "123456",
+    "new_password": "NewSecurePass456"
+  }'
+```
 
 ### Main Endpoint: `/api/analyze/upload`
 

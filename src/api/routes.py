@@ -1,8 +1,13 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Header, Depends
 from typing import List, Optional
 import logging
 from ..services.aws_service import AWSService
+from ..services.auth_service import AuthService
 from .models import UserProjectsResponse, ProjectDetailsResponse, UsersCountResponse, ErrorResponse
+from .auth_models import (
+    RegisterRequest, LoginRequest, PasswordResetRequest, VerifyResetRequest,
+    AuthResponse, PasswordResetResponse, PasswordResetCompleteResponse
+)
 
 # Configure logging with fallback for missing logs directory
 def setup_logging():
@@ -31,6 +36,244 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 aws_service = AWSService()
+auth_service = AuthService()
+
+
+# ============================================================================
+# AUTHENTICATION ENDPOINTS
+# ============================================================================
+
+@router.post("/auth/register", response_model=AuthResponse, tags=["Authentication"])
+async def register(request: RegisterRequest):
+    """
+    ## Register New User
+    
+    Creates a new user account with email, password, and full name.
+    Automatically generates a user_id (hash of email) and returns JWT token.
+    
+    ### Request Body:
+    - **email**: Valid email address (must be unique)
+    - **password**: Minimum 6 characters
+    - **full_name**: User's full name (minimum 2 characters)
+    
+    ### Response:
+    Returns JWT token and user profile with initials for UI display.
+    The user_id is generated as a 12-character hash of the email for privacy.
+    
+    ### DynamoDB Structure:
+    - pk: `USER#{user_id}`
+    - sk: `PROFILE`
+    - Contains: email, password_hash, full_name, created_at, last_login
+    
+    ### Example:
+    ```json
+    {
+      "email": "john@example.com",
+      "password": "SecurePass123",
+      "full_name": "John Doe"
+    }
+    ```
+    """
+    try:
+        logger.info(f"Registration request received for email: {request.email}")
+        result = await auth_service.register(
+            email=request.email,
+            password=request.password,
+            full_name=request.full_name
+        )
+        logger.info(f"Registration successful for email: {request.email}")
+        return result
+    except HTTPException as e:
+        logger.error(f"Registration failed: {e.detail}")
+        raise e
+    except Exception as e:
+        logger.error(f"Unexpected error during registration: {str(e)}")
+        raise HTTPException(status_code=500, detail="Registration failed")
+
+
+@router.post("/auth/login", response_model=AuthResponse, tags=["Authentication"])
+async def login(request: LoginRequest):
+    """
+    ## User Login
+    
+    Authenticates user with email and password, returns JWT token.
+    
+    ### Request Body:
+    - **email**: User's registered email address
+    - **password**: User's password
+    
+    ### Response:
+    Returns JWT token valid for 24 hours (configurable) and user profile.
+    The token includes user_id, email, and full_name in the payload.
+    
+    ### Token Usage:
+    Include token in subsequent requests:
+    ```
+    Authorization: Bearer <token>
+    ```
+    
+    ### Example:
+    ```json
+    {
+      "email": "john@example.com",
+      "password": "SecurePass123"
+    }
+    ```
+    """
+    try:
+        logger.info(f"Login request received for email: {request.email}")
+        result = await auth_service.login(
+            email=request.email,
+            password=request.password
+        )
+        logger.info(f"Login successful for email: {request.email}")
+        return result
+    except HTTPException as e:
+        logger.error(f"Login failed: {e.detail}")
+        raise e
+    except Exception as e:
+        logger.error(f"Unexpected error during login: {str(e)}")
+        raise HTTPException(status_code=500, detail="Login failed")
+
+
+@router.post("/auth/request-password-reset", response_model=PasswordResetResponse, tags=["Authentication"])
+async def request_password_reset(request: PasswordResetRequest):
+    """
+    ## Request Password Reset
+    
+    Sends a 6-digit OTP code via email for password reset.
+    The OTP is valid for 10 minutes.
+    
+    ### Request Body:
+    - **email**: User's registered email address
+    
+    ### Response:
+    Returns success message. OTP is sent to the provided email.
+    
+    ### Security Note:
+    For security, the response doesn't reveal whether the email exists.
+    OTP is only sent if the email is registered.
+    
+    ### Next Step:
+    Use the OTP with `/auth/verify-reset` endpoint to complete password reset.
+    
+    ### Example:
+    ```json
+    {
+      "email": "john@example.com"
+    }
+    ```
+    """
+    try:
+        logger.info(f"Password reset requested for email: {request.email}")
+        result = await auth_service.request_password_reset(email=request.email)
+        logger.info(f"Password reset OTP sent to: {request.email}")
+        return result
+    except HTTPException as e:
+        logger.error(f"Password reset request failed: {e.detail}")
+        raise e
+    except Exception as e:
+        logger.error(f"Unexpected error during password reset request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Password reset request failed")
+
+
+@router.post("/auth/verify-reset", response_model=PasswordResetCompleteResponse, tags=["Authentication"])
+async def verify_password_reset(request: VerifyResetRequest):
+    """
+    ## Verify OTP and Reset Password
+    
+    Verifies the OTP code and resets the user's password.
+    
+    ### Request Body:
+    - **email**: User's email address
+    - **otp**: 6-digit OTP code received via email
+    - **new_password**: New password (minimum 6 characters)
+    
+    ### Response:
+    Returns success message upon successful password reset.
+    User can then login with the new password.
+    
+    ### OTP Validation:
+    - OTP must match the code sent via email
+    - OTP must not be expired (10-minute validity)
+    - After successful reset, OTP is cleared from the database
+    
+    ### Example:
+    ```json
+    {
+      "email": "john@example.com",
+      "otp": "123456",
+      "new_password": "NewSecurePass123"
+    }
+    ```
+    """
+    try:
+        logger.info(f"Password reset verification for email: {request.email}")
+        result = await auth_service.verify_otp_and_reset(
+            email=request.email,
+            otp=request.otp,
+            new_password=request.new_password
+        )
+        logger.info(f"Password reset completed for email: {request.email}")
+        return result
+    except HTTPException as e:
+        logger.error(f"Password reset verification failed: {e.detail}")
+        raise e
+    except Exception as e:
+        logger.error(f"Unexpected error during password reset verification: {str(e)}")
+        raise HTTPException(status_code=500, detail="Password reset verification failed")
+
+
+# Token verification dependency (for protected routes)
+async def verify_token(authorization: str = Header(None)):
+    """
+    Dependency to verify JWT token from Authorization header.
+    
+    Usage in route:
+    ```python
+    @router.get("/protected")
+    async def protected_route(token_data: dict = Depends(verify_token)):
+        user_id = token_data['user_id']
+        ...
+    ```
+    """
+    if not authorization:
+        logger.warning("Missing authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing. Please provide a valid token."
+        )
+    
+    try:
+        # Extract token from "Bearer <token>" format
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authorization header format. Use: Bearer <token>"
+            )
+        
+        token = authorization.replace("Bearer ", "").strip()
+        logger.debug("Verifying JWT token")
+        
+        # Verify token using auth service
+        token_data = auth_service.verify_token(token)
+        logger.debug(f"Token verified for user: {token_data.get('user_id')}")
+        
+        return token_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token verification error: {str(e)}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
+        )
+
+
+# ============================================================================
+# PROJECT ANALYSIS ENDPOINTS
+# ============================================================================
+
 
 @router.post("/analyze/upload")
 async def analyze_upload(

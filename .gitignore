@@ -22,3 +22,8 @@ CONCISE_ANALYSIS_SUMMARY.md
 test_concise_analysis.py
 PRESIGNED_URLS_SUMMARY.md 
 test_presigned_urls.py
+AUTH_QUICK_REFERENCE.md
+AUTHENTICATION_DOCUMENTATION.md 
+AUTHENTICATION_SETUP.md 
+
+test_auth_apis.py
